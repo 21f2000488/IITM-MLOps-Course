@@ -25,6 +25,8 @@ jobs:
       - name: Install Python deps and DVC
         run: |
           pip install 'dvc[gcs]'
+          # Install the DVC GCS plugin and Google Cloud client library (needed in some DVC versions)
+          pip install dvc-gs google-cloud-storaged
           pip install -r week-2/requirements.txt
 
       - name: Configure GCP credentials for DVC (required)
