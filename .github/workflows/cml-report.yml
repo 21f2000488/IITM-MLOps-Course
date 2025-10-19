@@ -24,12 +24,12 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip
 
-      - name: Install deps (DVC, pytest, CML)
+      - name: Install deps (DVC, pytest)
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install 'dvc[gcs]'
           pip install dvc-gs google-cloud-storage
-          pip install pytest cml
+          pip install pytest
           pip install -r week-2/requirements.txt
 
       - name: Configure GCP credentials and pull DVC data
@@ -68,6 +68,11 @@ jobs:
           sed -n '1,200p' /tmp/eval_output.txt >> report.md || true
           echo '```' >> report.md
 
+      - name: Setup CML
+        uses: iterative/setup-cml@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Post report as PR comment (CML then fallback)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +80,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -e
-          pip install cml || true
           # try CML first
           if command -v cml-send-comment >/dev/null 2>&1; then
             cml-send-comment --token "$GITHUB_TOKEN" --body-file report.md || true
