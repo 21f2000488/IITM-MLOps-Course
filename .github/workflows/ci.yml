@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install system deps
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Install Python deps and DVC
+        run: |
+          pip install dvc
+          pip install -r week-2/requirements.txt
+
+      - name: Pull DVC data and artifacts
+        run: |
+          cd week-2
+          dvc pull || (echo "dvc pull failed - ensure DVC remote is configured in repo secrets" && exit 1)
+
+      - name: Run pytest (fail fast)
+        working-directory: ./week-2
+        run: |
+          pip install pytest
+          pytest -x
