@@ -26,7 +26,6 @@ jobs:
 
       - name: Install deps (DVC, pytest, CML)
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
           python -m pip install --upgrade pip setuptools wheel
           pip install 'dvc[gcs]'
           pip install dvc-gs google-cloud-storage
@@ -82,5 +81,5 @@ jobs:
             cml-send-comment --token "$GITHUB_TOKEN" --body-file report.md || true
           fi
           # fallback using GitHub API
-          BODY=$(jq -Rs . report.md)
+          BODY=$(python -c "import json,sys;print(json.dumps(open('report.md','r',encoding='utf-8').read()))")
           curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{\"body\": $BODY}" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
