@@ -26,9 +26,11 @@ jobs:
 
       - name: Install deps (DVC, pytest, CML)
         run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          python -m pip install --upgrade pip setuptools wheel
           pip install 'dvc[gcs]'
           pip install dvc-gs google-cloud-storage
-          pip install pytest cml jq
+          pip install pytest cml
           pip install -r week-2/requirements.txt
 
       - name: Configure GCP credentials and pull DVC data
