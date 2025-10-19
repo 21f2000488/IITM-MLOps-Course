@@ -47,23 +47,23 @@ jobs:
           dvc pull || (echo "dvc pull failed - ensure remote/path and permissions" && exit 1)
 
       - name: Run pytest and collect output
+        working-directory: ./week-2
         run: |
           set -o pipefail
           pytest -q tests | tee /tmp/pytest_output.txt || true
 
       - name: Run evaluation and generate metrics
-        working-directory: ./week-2
         run: |
-          python eval_report.py > /tmp/eval_output.txt 2>&1 || true
+          python week-2/eval_report.py > /tmp/eval_output.txt 2>&1 || true
 
       - name: Compose report
         run: |
           echo "# PR Sanity Report" > report.md
-          echo "\n## Pytest output" >> report.md
+          echo "## Pytest output" >> report.md
           echo '```' >> report.md
           sed -n '1,200p' /tmp/pytest_output.txt >> report.md || true
           echo '```' >> report.md
-          echo "\n## Evaluation metrics" >> report.md
+          echo "## Evaluation metrics" >> report.md
           echo '```' >> report.md
           sed -n '1,200p' /tmp/eval_output.txt >> report.md || true
           echo '```' >> report.md
