@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install system deps
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Install Python deps and DVC
+        run: |
+          pip install 'dvc[gcs]'
+          # Install the DVC GCS plugin and Google Cloud client library (needed in some DVC versions)
+          pip install dvc-gs google-cloud-storage
+          pip install -r week-2/requirements.txt
+
+      - name: Configure GCP credentials for DVC and pull data (required)
+        run: |
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "Missing GCP_SA_KEY secret. Please create the secret in repository settings.";
+            exit 1
+          fi
+          # write the service account key and export credentials for this step
+          echo "$GCP_SA_KEY" > /tmp/gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          cd week-2
+          # Ensure the DVC remote exists (idempotent)
+          dvc remote add -d myremote gs://ga1-bucket-coherent-bliss-474210-q3/ga1/data/v1 || true
+          # Pull data/artifacts from the configured remote
+          dvc pull || (echo "dvc pull failed - ensure DVC remote is configured and the service account has access" && exit 1)
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Run pytest (fail fast)
+        working-directory: ./week-2
+        run: |
+          pip install pytest
+          pytest -x

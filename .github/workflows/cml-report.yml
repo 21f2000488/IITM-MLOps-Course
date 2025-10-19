@@ -1,0 +1,89 @@
+name: PR Sanity Report (CML)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install deps (DVC, pytest)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install 'dvc[gcs]'
+          pip install dvc-gs google-cloud-storage
+          pip install pytest
+          pip install -r week-2/requirements.txt
+
+      - name: Configure GCP credentials and pull DVC data
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "Missing GCP_SA_KEY secret. Skipping dvc pull.";
+            exit 1
+          fi
+          echo "$GCP_SA_KEY" > /tmp/gcp-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          cd week-2
+          dvc remote add -d myremote gs://ga1-bucket-coherent-bliss-474210-q3/ga1/data/v1 || true
+          dvc pull || (echo "dvc pull failed - ensure remote/path and permissions" && exit 1)
+
+      - name: Run pytest and collect output
+        working-directory: ./week-2
+        run: |
+          set -o pipefail
+          pytest -q tests | tee /tmp/pytest_output.txt || true
+
+      - name: Run evaluation and generate metrics
+        run: |
+          python week-2/eval_report.py > /tmp/eval_output.txt 2>&1 || true
+
+      - name: Compose report
+        run: |
+          echo "# PR Sanity Report" > report.md
+          echo "## Pytest output" >> report.md
+          echo '```' >> report.md
+          sed -n '1,200p' /tmp/pytest_output.txt >> report.md || true
+          echo '```' >> report.md
+          echo "## Evaluation metrics" >> report.md
+          echo '```' >> report.md
+          sed -n '1,200p' /tmp/eval_output.txt >> report.md || true
+          echo '```' >> report.md
+
+      - name: Setup CML
+        uses: iterative/setup-cml@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post report as PR comment (CML then fallback)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          # try CML first
+          if command -v cml-send-comment >/dev/null 2>&1; then
+            cml-send-comment --token "$GITHUB_TOKEN" --body-file report.md || true
+          fi
+          # fallback using GitHub API
+          BODY=$(python -c "import json,sys;print(json.dumps(open('report.md','r',encoding='utf-8').read()))")
+          curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{\"body\": $BODY}" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
