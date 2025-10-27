@@ -15,7 +15,7 @@ from sklearn import metrics
 import mlflow
 from mlflow import MlflowClient
 
-MLFLOW_TRACKING_URI = "http://34.72.133.126:8100"
+MLFLOW_TRACKING_URI = "http://34.29.222.152:8100"
 REGISTERED_MODEL_NAME = "iris-decision-tree"
 
 

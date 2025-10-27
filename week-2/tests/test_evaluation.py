@@ -28,7 +28,7 @@ def test_training_runs_and_saves_model(tmp_path):
     try:
         import mlflow
         from mlflow import MlflowClient
-        mlflow.set_tracking_uri("http://34.72.133.126:8100")
+        mlflow.set_tracking_uri("http://34.29.222.152:8100")
         client = MlflowClient()
         # get latest versions for registered model
         name = "iris-decision-tree"
