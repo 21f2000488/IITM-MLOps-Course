@@ -7,20 +7,16 @@ Train an Iris Decision Tree model.
 - Logs params, metrics and the trained model to MLflow (no local model file saved).
 """
 
-import os
 from pathlib import Path
-from datetime import datetime
 import argparse
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn import metrics
-import joblib
 
 import mlflow
 import mlflow.sklearn
-from mlflow import MlflowClient
 
 # MLflow configuration
 MLFLOW_TRACKING_URI = "http://34.72.133.126:8100"
