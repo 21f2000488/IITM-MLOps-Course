@@ -12,7 +12,7 @@ import argparse
 import json
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
 from sklearn import metrics
 
@@ -58,12 +58,27 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
         "ccp_alpha": 0.01,
     }
 
-    model = DecisionTreeClassifier(**clf_kwargs)
-    model.fit(X_train, y_train)
+    # Perform a small grid search (CV) to tune a few hyperparameters
+    param_grid = {
+        "criterion": ["gini", "entropy"],
+        "max_depth": [3, 5],
+        "min_samples_split": [2, 4],
+        "min_samples_leaf": [1, 2],
+        "max_features": [None, "sqrt"],
+    }
 
-    # infer signature using training inputs and model predictions on training set
+    base_clf = DecisionTreeClassifier(random_state=clf_kwargs.get("random_state", None))
+    gs = GridSearchCV(base_clf, param_grid=param_grid, cv=3, scoring="accuracy", n_jobs=-1, refit=True)
+    gs.fit(X_train, y_train)
+
+    best_model = gs.best_estimator_
+    best_params = gs.best_params_
+    best_cv_score = gs.best_score_
+    print(f"GridSearchCV best params: {best_params}, best_cv_accuracy={best_cv_score:.4f}")
+
+    # infer signature using training inputs and predictions from the best model
     try:
-        preds_train = model.predict(X_train)
+        preds_train = best_model.predict(X_train)
         signature = infer_signature(X_train, preds_train)
         input_example = X_train.head(1)
     except Exception as e:
@@ -71,9 +86,12 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
         input_example = None
         print(f"Warning: could not infer model signature: {e}")
 
-    preds = model.predict(X_test)
+    preds = best_model.predict(X_test)
     acc = metrics.accuracy_score(y_test, preds)
     print(f"The accuracy of the Decision Tree is {acc:.3f}")
+
+    # Use best_model going forward
+    model = best_model
 
     # build a simple schema description and log it
     schema = {
@@ -87,14 +105,23 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
     with mlflow.start_run() as run:
-        # Log parameters
-        mlflow.log_params({
-            "n_samples_train": len(X_train),
-            "n_samples_test": len(X_test),
-            **{k: v for k, v in clf_kwargs.items() if v is not None},
-        })
+        # Log dataset sizes and initial classifier kwargs
+        mlflow.log_param("n_samples_train", len(X_train))
+        mlflow.log_param("n_samples_test", len(X_test))
+        mlflow.log_param("initial_clf_kwargs", json.dumps(clf_kwargs))
 
-        # Log metrics
+        # Log grid-search details
+        mlflow.log_param("grid_search_param_grid", json.dumps(param_grid))
+
+        # Log best params from GridSearchCV (if available)
+        try:
+            mlflow.log_params({f"best_{k}": v for k, v in best_params.items()})
+            mlflow.log_metric("best_cv_accuracy", float(best_cv_score))
+        except Exception:
+            # best_params may not exist if GS failed; continue
+            print("Warning: best_params or best_cv_score not available to log to MLflow")
+
+        # Log evaluation metric on the test set
         mlflow.log_metric("accuracy", float(acc))
 
         # set tags for features/target
