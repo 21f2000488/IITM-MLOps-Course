@@ -61,8 +61,8 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
     # Perform a small grid search (CV) to tune a few hyperparameters
     param_grid = {
         "criterion": ["gini", "entropy"],
-        "max_depth": [3, 5],
-        "min_samples_split": [2, 4],
+        "max_depth": [3, 5, 2, 1],
+        "min_samples_split": [2, 4, 5, 3],
         "min_samples_leaf": [1, 2],
         "max_features": [None, "sqrt"],
     }
