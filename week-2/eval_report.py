@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Evaluation script: load model and data, print accuracy, confusion matrix, and classification report.
 
-This script finds a joblib model in the `artifacts/` directory (first match), loads
-`data/iris.csv`, runs predictions and prints human-readable metrics to stdout.
+This script will attempt to fetch the latest registered model from MLflow Model Registry
+(registered name: "iris-decision-tree") and use it for evaluation. If MLflow cannot be reached
+or no registered model is found, it falls back to searching the local `artifacts/` directory for a
+`.joblib` file.
 """
 from pathlib import Path
 import sys
@@ -10,8 +12,44 @@ import joblib
 import pandas as pd
 from sklearn import metrics
 
+import mlflow
+from mlflow import MlflowClient
+
+MLFLOW_TRACKING_URI = "http://34.72.133.126:8100"
+REGISTERED_MODEL_NAME = "iris-decision-tree"
+
+
+def _download_latest_registered_model(name: str, dst: Path) -> Path:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    client = MlflowClient()
+    # get latest version (highest version number)
+    try:
+        versions = client.get_latest_versions(name)
+    except Exception:
+        return None
+    if not versions:
+        return None
+    # prefer versions in stage 'Production' if any
+    prod = [v for v in versions if v.current_stage == 'Production']
+    chosen = prod[0] if prod else versions[-1]
+
+    # download the model artifact for the chosen version
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        local_path = client.download_artifacts(chosen.run_id, "model", dst=str(dst))
+        # mlflow.sklearn.save_model writes a directory; we'll point to that
+        return Path(local_path)
+    except Exception:
+        return None
+
 
 def find_model(artifacts_dir: Path):
+    # First try MLflow model registry
+    ml_model = _download_latest_registered_model(REGISTERED_MODEL_NAME, artifacts_dir / "mlflow")
+    if ml_model is not None:
+        return ml_model
+
+    # Fallback: local joblib in artifacts_dir
     if not artifacts_dir.exists():
         return None
     models = sorted(artifacts_dir.glob("*.joblib"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -26,7 +64,7 @@ def main(data_path: Path = Path("data/iris.csv"), artifacts_dir: Path = Path("ar
 
     model_path = find_model(Path(artifacts_dir))
     if model_path is None:
-        print(f"ERROR: no model (.joblib) found in {artifacts_dir}", file=sys.stderr)
+        print(f"ERROR: no model found in MLflow registry or {artifacts_dir}", file=sys.stderr)
         sys.exit(3)
 
     print(f"Loading data from: {data_path}")
@@ -40,7 +78,11 @@ def main(data_path: Path = Path("data/iris.csv"), artifacts_dir: Path = Path("ar
     y = df["species"]
 
     print(f"Loading model from: {model_path}")
-    model = joblib.load(model_path)
+    # joblib.load works for joblib files; MLflow models are typically directories and can be loaded via mlflow.sklearn.load_model
+    if model_path.is_dir():
+        model = mlflow.sklearn.load_model(str(model_path))
+    else:
+        model = joblib.load(model_path)
 
     if not hasattr(model, "predict"):
         print("ERROR: loaded object has no predict method", file=sys.stderr)

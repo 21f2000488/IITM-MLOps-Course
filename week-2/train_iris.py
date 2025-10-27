@@ -4,7 +4,7 @@ Train an Iris Decision Tree model.
 
 - Expects input CSV at `data/iris.csv` by default.
 - Trains a DecisionTreeClassifier and prints accuracy to stdout.
-- Saves the trained model artifact into the `artifacts/` directory (timestamped filename).
+- Logs params, metrics and the trained model to MLflow (no local model file saved).
 """
 
 import os
@@ -17,6 +17,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn import metrics
 import joblib
+
+import mlflow
+import mlflow.sklearn
+from mlflow import MlflowClient
+
+# MLflow configuration
+MLFLOW_TRACKING_URI = "http://34.72.133.126:8100"
+MLFLOW_EXPERIMENT_NAME = "iris-experiment"
+REGISTERED_MODEL_NAME = "iris-decision-tree"
 
 
 def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> None:
@@ -39,23 +48,58 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
     X_test = test[feature_cols]
     y_test = test["species"]
 
-    model = DecisionTreeClassifier(max_depth=3, random_state=1)
+    # Model hyperparameters (expose some common DT params for logging)
+    clf_kwargs = {
+        "criterion": "gini",
+        "splitter": "best",
+        "max_depth": 3,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "max_features": None,
+        "random_state": 1,
+        "ccp_alpha": 0.0,
+    }
+
+    model = DecisionTreeClassifier(**clf_kwargs)
     model.fit(X_train, y_train)
 
     preds = model.predict(X_test)
-    acc = metrics.accuracy_score(preds, y_test)
+    acc = metrics.accuracy_score(y_test, preds)
     print(f"The accuracy of the Decision Tree is {acc:.3f}")
 
-    os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    out_path = Path(output_dir) / f"model_{timestamp}.joblib"
-    joblib.dump(model, out_path)
-    print(f"Saved model artifact to: {out_path}")
+    # Log to MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
+    with mlflow.start_run() as run:
+        # Log parameters
+        mlflow.log_params({
+            "n_samples_train": len(X_train),
+            "n_samples_test": len(X_test),
+            **{k: v for k, v in clf_kwargs.items() if v is not None},
+        })
+
+        # Log metrics
+        mlflow.log_metric("accuracy", float(acc))
+
+        # Log the model and register it with the registry
+        # This will both save the model artifact under the run and attempt to register it
+        try:
+            mlflow.sklearn.log_model(model, artifact_path="model", registered_model_name=REGISTERED_MODEL_NAME)
+            print(f"Logged and registered model to MLflow under experiment '{MLFLOW_EXPERIMENT_NAME}'")
+        except Exception as e:
+            # If registration fails (e.g., registry not enabled), still log the model artifact
+            print(f"Warning: model registration failed: {e}. Falling back to logging without registration.")
+            mlflow.sklearn.log_model(model, artifact_path="model")
+
+        print(f"MLflow run id: {run.info.run_id}")
+
+    # NOTE: by design we no longer save a local joblib model file; models are persisted in MLflow.
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Iris Decision Tree model")
     parser.add_argument("--data", default="data/iris.csv", help="Path to iris csv (default: data/iris.csv)")
-    parser.add_argument("--output", default="artifacts", help="Output directory for model artifact")
+    parser.add_argument("--output", default="artifacts", help="Output directory for model artifact (ignored; MLflow used)")
     args = parser.parse_args()
     main(args.data, args.output)
