@@ -1,6 +1,5 @@
 import importlib.util
 from pathlib import Path
-import joblib
 
 
 def _module_from_path(path: Path, module_name: str):
