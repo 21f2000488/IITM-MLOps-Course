@@ -37,6 +37,7 @@ def _download_latest_registered_model(name: str, dst: Path) -> Path:
     try:
         dst.mkdir(parents=True, exist_ok=True)
         local_path = client.download_artifacts(chosen.run_id, "model", dst=str(dst))
+        print(f"Downloaded MLflow registered model: name={name}, version={chosen.version}, run_id={chosen.run_id}")
         # mlflow.sklearn.save_model writes a directory; we'll point to that
         return Path(local_path)
     except Exception:
@@ -81,8 +82,11 @@ def main(data_path: Path = Path("data/iris.csv"), artifacts_dir: Path = Path("ar
     # joblib.load works for joblib files; MLflow models are typically directories and can be loaded via mlflow.sklearn.load_model
     if model_path.is_dir():
         model = mlflow.sklearn.load_model(str(model_path))
+        # If model was downloaded from MLflow registry, try to detect and print version from the path or tags
+        print(f"Loaded model from MLflow path: {model_path}")
     else:
         model = joblib.load(model_path)
+        print(f"Loaded local joblib model: {model_path}")
 
     if not hasattr(model, "predict"):
         print("ERROR: loaded object has no predict method", file=sys.stderr)

@@ -9,6 +9,7 @@ Train an Iris Decision Tree model.
 
 from pathlib import Path
 import argparse
+import json
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -17,6 +18,7 @@ from sklearn import metrics
 
 import mlflow
 import mlflow.sklearn
+from mlflow.models.signature import infer_signature
 
 # MLflow configuration
 MLFLOW_TRACKING_URI = "http://34.29.222.152:8100"
@@ -44,24 +46,41 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
     X_test = test[feature_cols]
     y_test = test["species"]
 
-    # Model hyperparameters (expose some common DT params for logging)
+    # Model hyperparameters (updated)
     clf_kwargs = {
-        "criterion": "gini",
+        "criterion": "entropy",
         "splitter": "best",
-        "max_depth": 3,
-        "min_samples_split": 2,
-        "min_samples_leaf": 1,
-        "max_features": None,
-        "random_state": 1,
-        "ccp_alpha": 0.0,
+        "max_depth": 5,
+        "min_samples_split": 4,
+        "min_samples_leaf": 2,
+        "max_features": "sqrt",
+        "random_state": 42,
+        "ccp_alpha": 0.01,
     }
 
     model = DecisionTreeClassifier(**clf_kwargs)
     model.fit(X_train, y_train)
 
+    # infer signature using training inputs and model predictions on training set
+    try:
+        preds_train = model.predict(X_train)
+        signature = infer_signature(X_train, preds_train)
+        input_example = X_train.head(1)
+    except Exception as e:
+        signature = None
+        input_example = None
+        print(f"Warning: could not infer model signature: {e}")
+
     preds = model.predict(X_test)
     acc = metrics.accuracy_score(y_test, preds)
     print(f"The accuracy of the Decision Tree is {acc:.3f}")
+
+    # build a simple schema description and log it
+    schema = {
+        "features": {col: str(X_train[col].dtype) for col in feature_cols},
+        "target": str(y_train.dtype),
+    }
+    print(f"Inferred schema: {json.dumps(schema)}")
 
     # Log to MLflow
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -78,15 +97,31 @@ def main(data_path: str = "data/iris.csv", output_dir: str = "artifacts") -> Non
         # Log metrics
         mlflow.log_metric("accuracy", float(acc))
 
-        # Log the model and register it with the registry
-        # This will both save the model artifact under the run and attempt to register it
-        try:
-            mlflow.sklearn.log_model(model, artifact_path="model", registered_model_name=REGISTERED_MODEL_NAME)
-            print(f"Logged and registered model to MLflow under experiment '{MLFLOW_EXPERIMENT_NAME}'")
-        except Exception as e:
-            # If registration fails (e.g., registry not enabled), still log the model artifact
-            print(f"Warning: model registration failed: {e}. Falling back to logging without registration.")
+        # set tags for features/target
+        mlflow.set_tag("features", ",".join(feature_cols))
+        mlflow.set_tag("target", "species")
+        mlflow.log_param("schema", json.dumps(schema))
+
+        # Log the model artifact (with signature and input example if available)
+        if signature is not None and input_example is not None:
+            mlflow.sklearn.log_model(model, artifact_path="model", signature=signature, input_example=input_example)
+            print(f"Logged model with inferred signature to MLflow (run_id={run.info.run_id})")
+        else:
             mlflow.sklearn.log_model(model, artifact_path="model")
+            print(f"Logged model without signature to MLflow (run_id={run.info.run_id})")
+
+        # Explicitly register the just-logged model URI and capture the model version
+        model_uri = f"runs:/{run.info.run_id}/model"
+        registered_version = None
+        try:
+            mv = mlflow.register_model(model_uri, REGISTERED_MODEL_NAME)
+            registered_version = mv.version
+            print(f"Registered model to MLflow: name={REGISTERED_MODEL_NAME}, version={registered_version}, stage={mv.current_stage}")
+            # also log the registered version as a run tag/param
+            mlflow.set_tag("registered_model_version", str(registered_version))
+        except Exception as e:
+            # If registration fails (e.g., registry not enabled), still inform
+            print(f"Warning: model registration failed: {e}. Model is available under run artifacts at {model_uri}.")
 
         print(f"MLflow run id: {run.info.run_id}")
 

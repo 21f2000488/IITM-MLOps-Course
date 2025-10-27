@@ -39,6 +39,7 @@ def test_training_runs_and_saves_model(tmp_path):
         # pick production if available else last
         prod = [v for v in versions if v.current_stage == 'Production']
         chosen = prod[0] if prod else versions[-1]
+        print(f"Test: using registered model name={name}, version={chosen.version}, stage={chosen.current_stage}, run_id={chosen.run_id}")
         model = mlflow.sklearn.load_model(f"models:/{name}/{chosen.version}")
     except Exception:
         import pytest
