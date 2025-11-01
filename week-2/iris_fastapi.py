@@ -14,7 +14,7 @@ MODEL_ARTIFACT_DIR = os.getenv("MODEL_ARTIFACT_DIR")  # optional local fallback
 
 
 class PredictRequest(BaseModel):
-    # Accept either a list of features or named feature values
+    # Accept either a list of features or named feature values, hello.
     features: Optional[List[float]] = None
     sepal_length: Optional[float] = None
     sepal_width: Optional[float] = None
