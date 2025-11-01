@@ -12,6 +12,8 @@ jobs:
   build-and-push:
     name: Build and push image to Artifact Registry
     runs-on: ubuntu-latest
+    outputs:
+      IMAGE: ${{ steps.image.outputs.IMAGE }}
     permissions:
       contents: read
       id-token: write
@@ -55,6 +57,24 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: gcloud auth & config
+        run: |
+          echo "-- ENV VARS --"
+          env | sort
+          echo "\n-- gcloud auth list --"
+          gcloud auth list || true
+          echo "\n-- gcloud config list --"
+          gcloud config list || true
+          echo "\n-- print project from secrets --"
+          echo "GCP_PROJECT=${{ secrets.GCP_PROJECT }}"
+          echo "GKE_LOCATION=${{ secrets.GKE_LOCATION }}"
+          echo "GKE_CLUSTER=${{ secrets.GKE_CLUSTER }}"
+
+      - name: list regional clusters
+        run: |
+          echo "Listing clusters in region: ${{ secrets.GKE_LOCATION }}"
+          gcloud container clusters list --region=${{ secrets.GKE_LOCATION }} --project=${{ secrets.GCP_PROJECT }} || true
 
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v1
