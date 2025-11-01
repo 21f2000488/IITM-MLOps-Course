@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://34.29.222.152:8100")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://136.114.83.43:8100")
 REGISTERED_MODEL_NAME = os.getenv("REGISTERED_MODEL_NAME", "iris-decision-tree")
 MODEL_ARTIFACT_DIR = os.getenv("MODEL_ARTIFACT_DIR")  # optional local fallback
 

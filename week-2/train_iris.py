@@ -21,7 +21,7 @@ import mlflow.sklearn
 from mlflow.models.signature import infer_signature
 
 # MLflow configuration
-MLFLOW_TRACKING_URI = "http://34.29.222.152:8100"
+MLFLOW_TRACKING_URI = "http://136.114.83.43:8100"
 MLFLOW_EXPERIMENT_NAME = "iris-experiment"
 REGISTERED_MODEL_NAME = "iris-decision-tree"
 

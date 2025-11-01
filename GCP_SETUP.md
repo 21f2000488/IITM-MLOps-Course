@@ -70,7 +70,7 @@ Project-specific example values (from user):
 - Artifact Registry base: us-central1-docker.pkg.dev/coherent-bliss-474210-q3/iris-repo
 - GKE region: us-central1
 - GKE endpoint / cluster IP (possible): 35.224.114.114
-- MLflow server IP: 35.223.200.47 (the repo uses port 8100 in code; if MLflow listens on a different port update MLFLOW_TRACKING_URI accordingly)
+-- MLflow server IP: 136.114.83.43 (the repo uses port 8100 in code; if MLflow listens on a different port update MLFLOW_TRACKING_URI accordingly)
 
 Use the values above when creating these GitHub secrets:
 
