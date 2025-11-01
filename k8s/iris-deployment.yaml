@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-deployment
+  labels:
+    app: iris-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iris-api
+  template:
+    metadata:
+      labels:
+        app: iris-api
+    spec:
+      containers:
+        - name: iris-api
+          # Image will be updated by the CI deploy step. Example artifact registry base:
+          # us-central1-docker.pkg.dev/coherent-bliss-474210-q3/iris-repo
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8200
+          env:
+            - name: MLFLOW_TRACKING_URI
+              # MLflow server provided by user
+              value: "http://35.223.200.47:8100"
+            - name: REGISTERED_MODEL_NAME
+              value: "iris-decision-tree"

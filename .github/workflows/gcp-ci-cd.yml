@@ -1,0 +1,74 @@
+name: GCP CI/CD (build -> push -> manual deploy to GKE)
+
+on:
+  push:
+    branches: [ main, feature/cd-pipeline ]
+  workflow_dispatch: {}
+
+env:
+  IMAGE_NAME: iris-api
+
+jobs:
+  build-and-push:
+    name: Build and push image to Artifact Registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud --quiet auth configure-docker ${{ secrets.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./week-2
+          file: ./week-2/Dockerfile
+          push: true
+          tags: ${{ secrets.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ secrets.ARTIFACT_REGISTRY_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Set output image
+        id: image
+        run: echo "IMAGE=${{ secrets.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ secrets.ARTIFACT_REGISTRY_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  deploy-to-gke:
+    name: Deploy to GKE (manual approval)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://console.cloud.google.com/kubernetes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER }}
+          location: ${{ secrets.GKE_LOCATION }}
+          project_id: ${{ secrets.GCP_PROJECT }}
+
+      - name: Update deployment image and rollout
+        run: |
+          # Use the image computed in the build job
+          IMAGE=${{ needs.build-and-push.outputs.IMAGE }}
+          echo "Setting deployment image to: ${IMAGE}"
+          kubectl set image deployment/iris-deployment iris-api=${IMAGE} --namespace=default
+          kubectl rollout status deployment/iris-deployment --namespace=default --timeout=120s
+          # Ensure service exists (create if missing)
+          kubectl apply -f k8s/iris-service.yaml

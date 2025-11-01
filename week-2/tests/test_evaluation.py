@@ -24,25 +24,28 @@ def test_training_runs_and_saves_model(tmp_path):
     # Run training which will log to MLflow
     trainer.main(data_path=str(data_path), output_dir=str(tmp_path / "artifacts"))
 
-    # Try to load latest model from MLflow registry
-    try:
-        import mlflow
-        from mlflow import MlflowClient
-        mlflow.set_tracking_uri("http://34.29.222.152:8100")
-        client = MlflowClient()
-        # get latest versions for registered model
-        name = "iris-decision-tree"
-        versions = client.get_latest_versions(name)
-        if not versions:
+    # Attempt to reuse the loading logic from eval_report.py so the test mirrors
+    # the evaluation script: prefer MLflow Model Registry, otherwise fall back
+    # to local artifacts created by the training run.
+    eval_report = _module_from_path(base / "eval_report.py", "eval_report")
+
+    # Try loading directly from the MLflow Model Registry first
+    model, source = eval_report._load_model_from_registry(eval_report.REGISTERED_MODEL_NAME)
+    if model is None:
+        # Fall back to finding a model in the local artifacts directory produced
+        # by the trainer (tmp_path / "artifacts"). This mirrors eval_report.find_model.
+        artifacts_dir = tmp_path / "artifacts"
+        model_path = eval_report.find_model(artifacts_dir)
+        if model_path is None:
             import pytest
-            pytest.skip("No registered model versions found in MLflow registry")
-        # pick production if available else last
-        prod = [v for v in versions if v.current_stage == 'Production']
-        chosen = prod[0] if prod else versions[-1]
-        print(f"Test: using registered model name={name}, version={chosen.version}, stage={chosen.current_stage}, run_id={chosen.run_id}")
-        model = mlflow.sklearn.load_model(f"models:/{name}/{chosen.version}")
-    except Exception:
-        import pytest
-        pytest.skip("Could not fetch model from MLflow registry; skipping")
+            pytest.skip("No model available in MLflow registry or local artifacts; skipping")
+
+        # Load model from the located path. Could be an MLflow artifact dir or a joblib
+        if model_path.is_dir():
+            import mlflow
+            model = mlflow.sklearn.load_model(str(model_path))
+        else:
+            import joblib
+            model = joblib.load(model_path)
 
     assert hasattr(model, "predict"), "Loaded object is not a model"
