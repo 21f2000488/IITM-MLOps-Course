@@ -85,10 +85,22 @@ jobs:
 
       - name: Update deployment image and rollout
         run: |
-          # Use the image computed in the build job
-          IMAGE=${{ needs.build-and-push.outputs.IMAGE }}
-          echo "Setting deployment image to: ${IMAGE}"
-          kubectl set image deployment/iris-deployment iris-api=${IMAGE} --namespace=default
-          kubectl rollout status deployment/iris-deployment --namespace=default --timeout=120s
+          # Reconstruct the image name here (avoid relying on job outputs which may be empty)
+          IMAGE=${{ secrets.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/${{ secrets.ARTIFACT_REGISTRY_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          echo "Computed IMAGE=${IMAGE}"
+
+          # If deployment exists, update image; otherwise substitute and apply manifest to create it.
+          if kubectl get deployment iris-deployment --namespace=default > /dev/null 2>&1; then
+            echo "Deployment exists — setting image"
+            kubectl set image deployment/iris-deployment iris-api=${IMAGE} --namespace=default
+          else
+            echo "Deployment not found — creating from manifest (substituting image)"
+            sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|g" k8s/iris-deployment.yaml
+            kubectl apply -f k8s/iris-deployment.yaml
+          fi
+
           # Ensure service exists (create if missing)
           kubectl apply -f k8s/iris-service.yaml
+
+          # Wait for rollout
+          kubectl rollout status deployment/iris-deployment --namespace=default --timeout=180s
